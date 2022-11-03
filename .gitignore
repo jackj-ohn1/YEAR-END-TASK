@@ -1,0 +1,5 @@
+#ignore reservation
+/crawler/task/reservation/
+
+#ignore goland file
+*.idea
