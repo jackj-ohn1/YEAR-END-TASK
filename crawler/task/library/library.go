@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"year-end/model"
 )
 
@@ -11,10 +12,10 @@ const noneCOOKIE = ""
 const libraryUrl = "http://opac.ccnu.edu.cn/reader/book_hist.php"
 const hostUrl = "http://opac.ccnu.edu.cn"
 
-func GetHistoryBooks(ctx context.Context, uname, psd string) {
-	cookie, err := getLibraryCookie(uname, psd)
+func GetHistoryBooks(ctx context.Context, uname, psd string, client *http.Client) error {
+	cookie, err := getLibraryCookie(client)
 	if err != nil || cookie == noneCOOKIE {
-		log.Fatal("cookie获取失败:", err)
+		return err
 	}
 	fmt.Println("cookie获取成功")
 	data := make(chan string)
@@ -26,17 +27,17 @@ func GetHistoryBooks(ctx context.Context, uname, psd string) {
 		case one, ok := <-data:
 			if !ok {
 				tx.Commit()
-				return
+				return nil
 			}
-			book := &model.LibraryModel{Name: one, Id: uname}
+			book := &model.Book{Name: one, Account: uname}
 			if err := book.AddBook(tx); err != nil {
 				tx.Rollback()
 				log.Fatal("事务提交失败:", err)
-				return
+				return err
 			}
 		case <-ctx.Done():
 			tx.Rollback()
-			return
+			return err
 		}
 	}
 }

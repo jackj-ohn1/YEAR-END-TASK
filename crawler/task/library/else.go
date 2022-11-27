@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"year-end/tool/user"
 )
 
 func getHistoryBooks(cookie string, data chan<- string) {
@@ -17,7 +16,7 @@ func getHistoryBooks(cookie string, data chan<- string) {
 	
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Fatal("请求失败:", err)
+		log.Println("请求失败:", err)
 		return
 	}
 	body, _ := io.ReadAll(resp.Body)
@@ -37,13 +36,13 @@ func regexpMatch(body []byte, data chan<- string) {
 	}()
 }
 
-func getLibraryCookie(uname, psd string) (string, error) {
-	var client *http.Client
-	var err error
-	
-	if client, err = user.Login(uname, psd); err != nil {
-		return noneCOOKIE, err
-	}
+func getLibraryCookie(client *http.Client) (string, error) {
+	//var client *http.Client
+	//var err error
+	//
+	//if client, err = user.Login(uname, psd); err != nil {
+	//	return noneCOOKIE, err
+	//}
 	
 	req, _ := http.NewRequest("GET", libraryUrl, nil)
 	

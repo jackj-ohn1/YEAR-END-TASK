@@ -1,7 +1,7 @@
 package user
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -15,6 +15,7 @@ const loginUrl = "https://account.ccnu.edu.cn/cas/login"
 const loginHost = "https://account.ccnu.edu.cn"
 
 func Login(uname, psd string) (*http.Client, error) {
+	var login bool
 	jar, _ := cookiejar.New(&cookiejar.Options{})
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -30,33 +31,35 @@ func Login(uname, psd string) (*http.Client, error) {
 		return nil, err
 	}
 	
-	if err := newRequest(client, body, uname, psd); err != nil {
+	if login, err = newRequest(client, body, uname, psd); err != nil {
 		return nil, err
+	} else if !login {
+		return nil, errors.New("登录失败")
 	}
 	
 	return client, nil
 }
 
-func newRequest(client *http.Client, body []byte, uname, psd string) error {
+func newRequest(client *http.Client, body []byte, uname, psd string) (bool, error) {
 	vals := getFormDate(body, uname, psd)
 	
 	req, err := http.NewRequest("POST", loginHost+getRegexpResult(`action="(.*?)" method="post"`, body), strings.NewReader(vals.Encode()))
 	if err != nil {
-		return nil
+		return false, nil
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	
 	// 失败后跳转也是200
-	if resp.StatusCode == 200 {
-		fmt.Println("登录成功")
+	b, _ := io.ReadAll(resp.Body)
+	if !loginIn(b) {
+		return false, nil
 	}
-	
-	return nil
+	return true, nil
 }
 
 func getFormDate(body []byte, uname, psd string) url.Values {
@@ -72,4 +75,9 @@ func getFormDate(body []byte, uname, psd string) url.Values {
 func getRegexpResult(rgx string, body []byte) string {
 	rgxPattern := regexp.MustCompile(rgx)
 	return string(rgxPattern.FindAllSubmatch(body, 1)[0][1])
+}
+
+func loginIn(body []byte) bool {
+	rgxPattern := regexp.MustCompile("登录成功")
+	return rgxPattern.Match(body)
 }

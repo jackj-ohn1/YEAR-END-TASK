@@ -1,0 +1,17 @@
+mysql:
+  user: "yyj"
+  password: "0118"
+  ip: "127.0.0.1"
+  port: "3306"
+  database: "year_end"
+redis:
+  ip: "127.0.0.1"
+  port: "6379"
+  db: 0
+token:
+  expire: 2
+  issuer: ""
+  sign: ""
+gin:
+  port: "8080"
+  mode: "debug"

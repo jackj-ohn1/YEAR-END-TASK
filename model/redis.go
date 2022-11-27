@@ -2,9 +2,14 @@ package model
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/go-redis/redis/v8"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/spf13/viper"
 	"log"
+	"time"
+	"year-end/utils/errno"
 )
 
 var DR *DatabaseRedis = &DatabaseRedis{Dr: new(redis.Client)}
@@ -15,7 +20,9 @@ type DatabaseRedis struct {
 
 // 记录
 type WrapOrderData struct {
-	Method   []OrderData `json:"method" redis:"method"`
+	// 支付方式
+	Method []OrderData `json:"method" redis:"method"`
+	// 支付地点
 	Location []OrderData `json:"location" redis:"location"`
 	Money    float64     `json:"money" redis:"money"`
 	Times    int         `json:"times" redis:"times"`
@@ -34,24 +41,25 @@ func (o *WrapOrderData) UnmarshalBinary(data []byte) error {
 
 func (dr *DatabaseRedis) Init() {
 	dr.Dr = redis.NewClient(&redis.Options{
-		Addr: "127.0.0.1:6379",
-		DB:   0,
+		Addr: fmt.Sprintf("%s:%s", viper.GetString("redis.ip"), viper.GetString("redis.port")),
+		DB:   viper.GetInt("redis.db"),
 	})
+	if err := dr.Dr.Ping(context.Background()).Err(); err != nil {
+		log.Fatal("缓存设置失败:", err)
+	}
 }
 
-// 一次将所有的加到缓存上，刚开启时使用
-func SetAllUserRecord(ctx context.Context) {
+// 一次将所有用户的缓存加上，刚开启时使用，还要一个全校统计的数据
+func (dr *DatabaseRedis) SetAllUserRecord(ctx context.Context) error {
 	users, err := GetAllUsers()
 	if err != nil {
-		log.Fatal("获取用户失败", err)
-		return
+		return err
 	}
 	
 	for _, val := range users {
-		ret, err := DR.Dr.Exists(ctx, val).Result()
+		ret, err := dr.Dr.Exists(ctx, val).Result()
 		if err != nil {
-			log.Fatal("查询redis数据库错误:", err)
-			return
+			return err
 		}
 		if ret > 0 {
 			continue
@@ -64,21 +72,21 @@ func SetAllUserRecord(ctx context.Context) {
 			Times:    GetTotalRecord(val),
 			Books:    GetBooks(val),
 		}
-		if err = DR.Dr.LPush(ctx, val, one).Err(); err != nil {
-			log.Fatal("存放缓冲失败", err)
+		if err = dr.Dr.Set(ctx, val, one, time.Hour*2).Err(); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 // 用户第一次登录使用就直接存数据库+存缓冲
-func SetOneUserRecord(ctx context.Context, uname string) {
-	ret, err := DR.Dr.Exists(ctx, uname).Result()
+func (dr *DatabaseRedis) SetOneUserRecord(ctx context.Context, uname string) error {
+	ret, err := dr.Dr.Exists(ctx, uname).Result()
 	if err != nil {
-		log.Fatal("查询redis数据库错误:", err)
-		return
+		return err
 	}
 	if ret > 0 {
-		return
+		return errors.New(errno.GetMessage(errno.ERR_CACHE_EXIST))
 	}
 	var t = &WrapOrderData{
 		Method:   GetMethodTime(uname),
@@ -87,15 +95,26 @@ func SetOneUserRecord(ctx context.Context, uname string) {
 		Times:    GetTotalRecord(uname),
 		Books:    GetBooks(uname),
 	}
-	if err := DR.Dr.LPush(ctx, uname, t); err != nil {
-		log.Fatal("存放缓冲失败:", err)
+	if err := dr.Dr.Set(ctx, uname, t, time.Hour*2).Err(); err != nil {
+		return err
 	}
+	
+	return nil
 }
 
-func GetOneUserRecord(ctx context.Context, uname string) WrapOrderData {
-	var t = WrapOrderData{} //
-	if err := DR.Dr.LPop(ctx, uname).Scan(&t); err != nil {
-		log.Fatal("取数据失败:", err)
+func (dr *DatabaseRedis) GetOneUserRecord(ctx context.Context, uname string) (*WrapOrderData, error) {
+	ret, err := dr.Dr.Exists(ctx, uname).Result()
+	if err != nil {
+		return nil, err
 	}
-	return t
+	
+	if ret <= 0 {
+		return nil, errors.New(errno.GetMessage(errno.ERR_CACHE_NOT_EXIST))
+	}
+	
+	var t WrapOrderData //
+	if err := dr.Dr.Get(ctx, uname).Scan(&t); err != nil {
+		return nil, err
+	}
+	return &t, nil
 }

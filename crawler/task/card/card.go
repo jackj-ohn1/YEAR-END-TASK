@@ -15,19 +15,17 @@ import (
 const cardUrl = "http://one.ccnu.edu.cn/ecard_portal/query_trans"
 const hostUrl = "http://one.ccnu.edu.cn"
 
-func GetRecordsOfYear(ctx context.Context, uname, psd string) {
-	token, err := getOneCCNUToken(uname, psd)
+func GetRecordsOfYear(ctx context.Context, uname, psd string, client *http.Client) error {
+	token, err := getOneCCNUToken(uname, psd, client)
 	if err != nil || token == nonTOKEN {
-		log.Println(err)
-		return
+		return err
 	}
 	fmt.Println("获取token成功")
-	go tick()
 	
-	data, done := make(chan model.ConsumeModel), make(chan struct{})
+	data, done := make(chan model.CardRecord), make(chan struct{})
 	nowYear, nowMonth := time.Now().Year(), time.Now().Month()
 	tx := model.D.DB.Begin()
-	workers(5, data, tx)
+	workers(10, data, tx)
 	for month := 1; month <= int(nowMonth); month++ {
 		start, end := fmt.Sprintf("%d-0%d-0%d", nowYear, month, 1), fmt.Sprintf("%d-0%d-0%d", nowYear, month+1, 1)
 		go getConsumptionRecords(uname, token, start, end, data, done)
@@ -41,16 +39,19 @@ func GetRecordsOfYear(ctx context.Context, uname, psd string) {
 			if i == int(nowMonth) {
 				tx.Commit()
 				close(data)
-				return
+				return nil
 			}
 		case <-ctx.Done():
 			tx.Rollback()
-			return
+			return nil
 		}
 	}
 }
 
-func getConsumptionRecords(uname, token, start, end string, data chan model.ConsumeModel, done chan struct{}) {
+func getConsumptionRecords(uname, token, start, end string, data chan model.CardRecord, done chan struct{}) {
+	defer func() {
+		done <- struct{}{}
+	}()
 	vals := url.Values{}
 	// 一个月的个数
 	vals.Set("limit", "1000")
@@ -82,5 +83,8 @@ func getConsumptionRecords(uname, token, start, end string, data chan model.Cons
 		return
 	}
 	
-	parseJson(uname, body, data, done)
+	if err := parseJson(uname, body, data); err != nil {
+		log.Println(err)
+		return
+	}
 }

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
 	"flag"
-	"year-end/crawler"
+	"year-end/config"
+	"year-end/internal"
 	"year-end/model"
 )
 
@@ -17,11 +17,11 @@ const (
 func main() {
 	// init
 	//flag.Parse()
-	ctx, _ := context.WithCancel(context.Background())
-	model.Start(ctx)
-	
+	cfg := &config.Config{}
+	cfg.Init("./config/config.yaml")
+	model.Start()
 	// run engine - > route
-	crawler.Crawler(ctx, uname, psd)
+	internal.StartHTTP()
 	
 	// run server
 	//internal.StartHTTP(*port)

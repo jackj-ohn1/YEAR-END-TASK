@@ -3,44 +3,63 @@ package crawler
 import (
 	"context"
 	"log"
+	"net/http"
 	"sync"
 	"year-end/crawler/task/card"
 	"year-end/crawler/task/library"
 	"year-end/model"
+	"year-end/utils/errno"
 )
 
-type Engine func(ctx context.Context, uname, psd string)
+type Engine func(ctx context.Context, uname, psd string, client *http.Client) error
 
-func Crawler(ctx context.Context, uname, psd string) {
+func Crawler(ctx context.Context, uname, psd string, client *http.Client) error {
 	var wg sync.WaitGroup
-	var user = &model.UserModel{
-		Password: psd,
-		ID:       uname,
-	}
-	if err := user.AddUser(); err != nil {
-		log.Fatal("添加用户失败", err)
-		return
-	}
-	// 使用engine
-	childCtx, _ := context.WithCancel(ctx)
-	worker(childCtx, uname, psd, library.GetHistoryBooks, &wg)
-	worker(childCtx, uname, psd, card.GetRecordsOfYear, &wg)
+	var errCh = make(chan error)
+	var done = make(chan struct{})
+	childCtx, cancel := context.WithCancel(ctx)
 	
-	// 将已存在的数据存放的缓冲中
-	//redisSetting(ctx, &wg, uname)
+	go func() {
+		for {
+			select {
+			case err, ok := <-errCh:
+				if ok && err != nil {
+					if errno.Is(err, errno.ERR_CACHE_EXIST) {
+						continue
+					}
+					log.Println("err:", err)
+					cancel()
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	wg.Add(2)
+	
+	go worker(childCtx, errCh, uname, psd, library.GetHistoryBooks, &wg, client)
+	go worker(childCtx, errCh, uname, psd, card.GetRecordsOfYear, &wg, client)
 	
 	wg.Wait()
+	// 将已存在的数据存放的缓冲中
+	redisSetting(childCtx, errCh, uname)
+	done <- struct{}{}
+	return nil
 }
 
-func redisSetting(ctx context.Context, wg *sync.WaitGroup, uname string) {
-	wg.Add(1)
+func redisSetting(ctx context.Context, errCh chan<- error, uname string) {
+	
 	// set redis process
-	model.SetOneUserRecord(ctx, uname)
-	defer wg.Done()
+	if err := model.DR.SetOneUserRecord(ctx, uname); err != nil {
+		errCh <- err
+		return
+	}
 }
 
-func worker(ctx context.Context, uname, psd string, engine Engine, wg *sync.WaitGroup) {
-	wg.Add(1)
-	engine(ctx, uname, psd)
+func worker(ctx context.Context, errCh chan<- error, uname, psd string, engine Engine, wg *sync.WaitGroup, client *http.Client) {
 	defer wg.Done()
+	if err := engine(ctx, uname, psd, client); err != nil {
+		errCh <- err
+		return
+	}
 }

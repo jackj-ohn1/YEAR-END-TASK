@@ -1,29 +1,32 @@
 package model
 
 import (
-	_ "github.com/jinzhu/gorm/dialects/mysql"
 	jsoniter "github.com/json-iterator/go"
+	_ "gorm.io/driver/mysql"
 	"strings"
 )
 
 // 数据库model
 
-type UserModel struct {
-	ID       string `gorm:"id"`
-	Password string `gorm:"password"`
+type User struct {
+	Id       uint   `gorm:"column:id;type:int;autoIncrement;primaryKey"`
+	Account  string `gorm:"column:account;type:varchar(20);primaryKey"`
+	Password string `gorm:"column:password;type:varchar(30);not null;"`
 }
 
-type ConsumeModel struct {
-	ID         string  `gorm:"id"`
-	TransMoney float64 `gorm:"tans_money"`
-	Location   string  `gorm:"location"`
-	Date       string  `gorm:"data"`
-	Method     string  `gorm:"method"`
+type CardRecord struct {
+	ID         uint    `gorm:"column:id;type:int;autoIncrement;primaryKey"`
+	Account    string  `gorm:"column:account;type:varchar(20)"`
+	TransMoney float64 `gorm:"column:trans_money;type:float"`
+	Location   string  `gorm:"column:location;type:varchar(100)"`
+	Date       string  `gorm:"column:data;type:varchar(100)"`
+	Method     string  `gorm:"column:method;type:varchar(100)"`
 }
 
-type LibraryModel struct {
-	Name string `gorm:"name"`
-	Id   string `gorm:"id"`
+type Book struct {
+	ID      uint   `gorm:"id;type:int;primaryKey;autoIncrement"`
+	Name    string `gorm:"name;type:varchar(30)"`
+	Account string `gorm:"account;type:varchar(20)"`
 }
 
 //
@@ -51,18 +54,18 @@ type Record struct {
 }
 
 type rows struct {
-	Total     int32           `json:"total"`
-	ViewEnd   int32           `json:"viewEnd"`
-	Records   int32           `json:"records"`
-	Rows      []ConsumeRecord `json:"rows"`
-	Start     int32           `json:"start"`
-	PageSize  int32           `json:"pageSize"`
-	ViewStart int32           `json:"viewStart"`
-	Page      int32           `json:"page"`
+	Total     int32               `json:"total"`
+	ViewEnd   int32               `json:"viewEnd"`
+	Records   int32               `json:"records"`
+	Rows      []SelfConsumeRecord `json:"rows"`
+	Start     int32               `json:"start"`
+	PageSize  int32               `json:"pageSize"`
+	ViewStart int32               `json:"viewStart"`
+	Page      int32               `json:"page"`
 }
 
 // 支付方式 支付地点 支付金额
-type ConsumeRecord struct {
+type SelfConsumeRecord struct {
 	DealName   string  `json:"dealName"`
 	OrgName    string  `json:"orgName"`
 	DealDate   string  `json:"dealDate"'`
@@ -74,9 +77,9 @@ type ConsumeRecord struct {
 	OutMoney   float64 `json:"outMoney"`
 }
 
-func (record *ConsumeRecord) ConvertToModel(uname string) ConsumeModel {
-	return ConsumeModel{
-		ID:         uname,
+func (record *SelfConsumeRecord) ConvertToModel(uname string) CardRecord {
+	return CardRecord{
+		Account:    uname,
 		TransMoney: record.TransMoney,
 		Location:   strings.Replace(record.OrgName, "华中师范大学/后勤集团/", "", -1),
 		Method:     record.WalletName,
